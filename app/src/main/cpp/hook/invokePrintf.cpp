@@ -11,6 +11,7 @@
 #include "dlfcn_nougat.h"
 #include "dlfcn_compat.h"
 #include "libpath.h"
+#include "version.h"
 
 
 static std::ofstream *invokeOs;
@@ -51,6 +52,10 @@ void invokePrintf::HookJNIInvoke(JNIEnv *env,
     if (invokePrintf_org_PrettyMethodSym == nullptr) {
         invokePrintf_org_PrettyMethodSym = prettyMethodSym;
     }
+    if (invokePrintf_org_PrettyMethodSym == nullptr) {
+        LOGE(">>>>>>>>>>>>>> HookJNIInvoke PrettyMethodSym == null ")
+        return;
+    }
     //artmethod->invoke
     void *invokeSym = getSymCompat(getlibArtPath(),
                                    "_ZN3art9ArtMethod6InvokeEPNS_6ThreadEPjjPNS_6JValueEPKc");
@@ -64,8 +69,11 @@ void invokePrintf::HookJNIInvoke(JNIEnv *env,
     LOGE(">>>>>>>>> hook art method invoke success ! %s ", isSuccess ? "true" : "false")
 }
 
-HOOK_DEF(void*, RegisterNative, void *thiz, void *native_method) {
-    string basicString = invokePrintf_org_PrettyMethodSym(thiz, true);
+void RegisterNativeCallBack(void *method, const void *native_method) {
+    if (method == nullptr || native_method == nullptr) {
+        return;
+    }
+    string basicString = invokePrintf_org_PrettyMethodSym(method, true);
     if (isSave) {
         *invokeOs << basicString.append("\n");
     }
@@ -74,12 +82,29 @@ HOOK_DEF(void*, RegisterNative, void *thiz, void *native_method) {
     size_t relative_offset =
             reinterpret_cast<size_t>(native_method) - reinterpret_cast<size_t>(info.dli_fbase);
 
-    LOG(INFO) <<"REGISTER_NATIVE " << basicString.c_str() << " absolute address(内存地址) -> "
-                        << native_method << "  relative offset(相对地址) "<<(void*)relative_offset
-                        <<"所属ELF文件 ["<<getFileNameForPath(info.dli_fname)+"]";
-
-    return orig_RegisterNative(thiz, native_method);
+    LOG(INFO) << "REGISTER_NATIVE " << basicString.c_str() << " absolute address(内存地址)["
+              << native_method << "]  relative offset(相对地址) [" << (void *) relative_offset
+              << "]  所属ELF文件[" << getFileNameForPath(info.dli_fname) + "]";
 }
+
+
+//12以上
+//const void* RegisterNative(Thread* self, ArtMethod* method, const void* native_method)
+HOOK_DEF(void*, RegisterNative_12, void *self, void *method, const void *native_method) {
+    RegisterNativeCallBack(method, native_method);
+    return orig_RegisterNative_12(self, method, native_method);
+}
+//11
+HOOK_DEF(void*, RegisterNative_11, void *method, const void *native_method) {
+    RegisterNativeCallBack(method, native_method);
+    return orig_RegisterNative_11(method, native_method);
+}
+
+HOOK_DEF(void*, RegisterNative, void *method, const void *native_method, bool b) {
+    RegisterNativeCallBack(method, native_method);
+    return orig_RegisterNative(method, native_method,b);
+}
+
 
 void invokePrintf::HookJNIRegisterNative(JNIEnv *env,
                                          std::ofstream *os,
@@ -91,16 +116,42 @@ void invokePrintf::HookJNIRegisterNative(JNIEnv *env,
     if (invokePrintf_org_PrettyMethodSym == nullptr) {
         invokePrintf_org_PrettyMethodSym = prettyMethodSym;
     }
-    //artmethod->RegisterNative
-    void *registerNativeSym =
-            getSymCompat(getlibArtPath(),
-                         "_ZN3art9ArtMethod14RegisterNativeEPKv");
-    if (registerNativeSym == nullptr) {
+    if (invokePrintf_org_PrettyMethodSym == nullptr) {
+        LOGE(">>>>>>>>>>>>>> HookJNIRegisterNative PrettyMethodSym == null ")
+        return;
+    }
+    void *art_method_register;
+    if (get_sdk_level() < ANDROID_S) {
+        //android 11
+        art_method_register = getSymCompat(getlibArtPath(),
+                                           "_ZN3art9ArtMethod14RegisterNativeEPKv");
+        if (art_method_register == nullptr) {
+            art_method_register = getSymCompat(getlibArtPath(),
+                                               "_ZN3art9ArtMethod14RegisterNativeEPKvb");
+        }
+    } else {
+        //12以上
+        art_method_register = getSymCompat(getlibArtPath(),
+                                           "_ZN3art11ClassLinker14RegisterNativeEPNS_6ThreadEPNS_9ArtMethodEPKv");
+    }
+
+    if (art_method_register == nullptr) {
         LOGE(">>>>>>>>> hook art method invoke fail ")
         return;
     }
-    bool isSuccess = HookUtils::Hooker(registerNativeSym,
-                                       (void *) new_RegisterNative,
-                                       (void **) &orig_RegisterNative);
+    bool isSuccess;
+    if (get_sdk_level() >= ANDROID_S) {
+        isSuccess = HookUtils::Hooker(art_method_register,
+                                      (void *) new_RegisterNative_12,
+                                      (void **) &orig_RegisterNative_12);
+    } else if (get_sdk_level() >= ANDROID_R) {
+        isSuccess = HookUtils::Hooker(art_method_register,
+                                      (void *) new_RegisterNative_11,
+                                      (void **) &orig_RegisterNative_11);
+    } else {
+        isSuccess = HookUtils::Hooker(art_method_register,
+                                      (void *) new_RegisterNative,
+                                      (void **) &orig_RegisterNative);
+    }
     LOGE(">>>>>>>>> hook art method register nativeS success ! %s ", isSuccess ? "true" : "false")
 }

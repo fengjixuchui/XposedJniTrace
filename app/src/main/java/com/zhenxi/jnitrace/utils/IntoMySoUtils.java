@@ -1,5 +1,8 @@
 package com.zhenxi.jnitrace.utils;
 
+import static com.zhenxi.jnitrace.config.ConfigKey.DEF_VALUE;
+import static com.zhenxi.jnitrace.config.ConfigKey.JNITRACE_DEX_NAME;
+
 import android.content.Context;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
@@ -10,6 +13,16 @@ import android.util.Log;
 import com.zhenxi.jnitrace.BuildConfig;
 
 
+import java.io.File;
+import java.lang.reflect.Array;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Objects;
+
+import dalvik.system.DexClassLoader;
 import de.robv.android.xposed.XposedHelpers;
 
 /**
@@ -23,19 +36,156 @@ public class IntoMySoUtils {
     private static final String ARM = "arm";
     private static final String ARM64 = "arm64";
 
-    private static final String lib = BuildConfig.project_name + "Lib";
+    public static final String LibDIRName = BuildConfig.project_name + "Cache";
 
     /**
-     * So的 名字 比如 libLVmp.so
+     * 最多尝试获取四层
+     */
+    @SuppressWarnings("all")
+    private static Field getPathListField(ClassLoader classLoader) {
+        Field pathListField = null;
+        try {
+            pathListField = classLoader.getClass().getDeclaredField("pathList");
+        } catch (NoSuchFieldException e) {
+            try {
+                pathListField = classLoader.
+                        getClass().getSuperclass()
+                        .getDeclaredField("pathList");
+            } catch (NoSuchFieldException ex) {
+                try {
+                    pathListField = classLoader.getClass().
+                            getSuperclass().getSuperclass().
+                            getDeclaredField("pathList");
+                } catch (NoSuchFieldException exc) {
+                    try {
+                        pathListField = classLoader.getClass().
+                                getSuperclass().getSuperclass().getSuperclass().
+                                getDeclaredField("pathList");
+                    } catch (NoSuchFieldException noSuchFieldException) {
+
+                    }
+                }
+            }
+        }
+        return pathListField;
+    }
+
+    /**
+     * 获取classloader里面的elements数组
+     */
+    private static Object[] getClassLoaderElements(ClassLoader classLoader) {
+        if (classLoader == null) {
+            return null;
+        }
+        //CLog.e("getClassLoaderElements class loader name " + classLoader);
+        try {
+            Field pathListField = getPathListField(classLoader);
+            if (pathListField != null) {
+                pathListField.setAccessible(true);
+                Object dexPathList = pathListField.get(classLoader);
+                Field dexElementsField = Objects.requireNonNull(dexPathList).getClass().getDeclaredField("dexElements");
+                dexElementsField.setAccessible(true);
+                Object[] dexElements = (Object[]) dexElementsField.get(dexPathList);
+                if (dexElements != null) {
+                    return dexElements;
+                } else {
+                    CLog.e("AddElements  get dexElements == null");
+                }
+            } else {
+                CLog.e("AddElements  get pathList == null");
+            }
+        } catch (Throwable e) {
+            CLog.e("AddElements  Throwable   " + e.getMessage(), e);
+        }
+        return null;
+    }
+
+    /**
+     * 将 Elements 数组 set回系统的 classloader里面
+     */
+    private static boolean SetDexElements(Object[] dexElementsResut,
+                                          int conunt, ClassLoader classLoader) {
+        try {
+            Field pathListField = getPathListField(classLoader);
+            if (pathListField != null) {
+                pathListField.setAccessible(true);
+                Object dexPathList = pathListField.get(classLoader);
+                Field dexElementsField = dexPathList.getClass().getDeclaredField("dexElements");
+                dexElementsField.setAccessible(true);
+                dexElementsField.set(dexPathList, dexElementsResut);
+                Object[] dexElements = (Object[]) dexElementsField.get(dexPathList);
+                if (Objects.requireNonNull(dexElements).length == conunt &&
+                        Arrays.hashCode(dexElements) == Arrays.hashCode(dexElementsResut)) {
+                    //CLog.i("merge dexElements.length -> " + dexElements.length);
+                    return true;
+                } else {
+                    CLog.e("merge dexElements.length ->  " + dexElements.length + " conunt ->   " + conunt);
+                    CLog.e("dexElements hashCode " +
+                            Arrays.hashCode(dexElements) + "  " + Arrays.hashCode(dexElementsResut));
+                    return false;
+                }
+            } else {
+                CLog.e("SetDexElements  get pathList == null");
+            }
+        } catch (Throwable e) {
+            CLog.e("SetDexElements  NoSuchFieldException   " + e, e);
+        }
+        return false;
+    }
+
+    /**
+     * 初始化我们的SO,加载我们的so到被Hook的apk内存里 。
+     * 支持两种加载方式,主要区别是两种Classloader不同 。
+     * <p>
+     * <p>
+     * 1,使用当前进程的Classloader
+     * 不可以直接使用,System.loadlib注入,System.loadlib会使用调用者类的Classloader,
+     * 而非当前进程的Classloader,会导致注入的So,使用的是Xposed 模块的Classloader 。
+     * 这种加载方法和apk直接加载so是一样的,不存在作用域问题。
+     * 这种方法更适用于hook apk里面so的逻辑,因为作用域是一样的。
+     * <p>
+     * <p>
+     * 2,使用lsp模块的Classloader,这时候的classloader用的是xposed模块的classloader 。
+     * 这时候有个弊端,就是遍历maps的时候,只能拿到当前classloader里面的so文件。比如Lsp的so文件
+     * 拿不到apk本身的so文件,因为classloader的作用域不同 。
+     * 这种方法更适用于hook系统api,系统api是公用的,不存在作用域问题。
+     * <p>
+     * 但是如果只是Hook 系统api 两种方式区别不是很大 。反而第2种更隐藏。
+     * <p>
+     * 这块还有一个细节,native方法如何注册的问题。
+     * 如果这个native方法写在xposed模块里面,就只能通过第二种方式去加载。
+     * 使用第一种会报错,所以干脆直接将native方法搞成dex文件。
+     * 哪个classloader用于加载,就往哪个classloader的作用域里面去加。这样可以同时支持1&2两种方法
      */
     public static void initMySoForName(Context context,
                                        String name,
-                                       ClassLoader soClassLoader,
-                                       String mIntoSoPath) {
+                                       ClassLoader so_classloader,
+                                       String intoSoPath,
+                                       String systemPath
+
+    ) {
+        CLog.i("start initMySoForName " + name
+                + " [" + so_classloader.getClass().getName() + "]");
+        CLog.i("initMySoForName into path ->" + intoSoPath);
         try {
-            String path = getSoPath(context, name, mIntoSoPath);
+            //尝试将Classloader和native注册方法合并
+            //防止因为传入不同的Classloader导致,无法对native方法进行注册。
+            //每次将我们需要注册的native方法先用classloader进行加载,然后和需要注册的
+            //classloader进行合并,这样不会存在在native层注册导致class not find
+            if (!MergeClassloader(context, so_classloader)) {
+                CLog.e("initMySoForName classloader merge error " + so_classloader.getClass().getName());
+                return;
+            }
+            String path;
+            if (systemPath==null||systemPath.equals(DEF_VALUE)) {
+                //本地路径
+                path = getSoPath(context, name, intoSoPath);
+            } else {
+                path = systemPath;
+            }
+            CLog.i("initMySoForName into so path ->  " + path);
             if (path != null) {
-                LoadSoForPath(path, soClassLoader);
+                LoadSoForPath(path, so_classloader);
             } else {
                 CLog.e(">>>>>>>>>>>>>  not found into so path -> " + name);
             }
@@ -49,48 +199,132 @@ public class IntoMySoUtils {
         }
     }
 
+    private static void tryAddNativeLib(Context context, ClassLoader so_classloader) {
+        //ClassUtils.getClassMethodInfo(so_classloader.getClass().getSuperclass());
+        try {
+            Method addNativePath = Objects.requireNonNull
+                            (so_classloader.getClass().getSuperclass())
+                    .getDeclaredMethod("addNativePath", Collection.class);
+            addNativePath.setAccessible(true);
+            String nativeLibraryDir = context.getApplicationInfo().nativeLibraryDir;
+            CLog.i("tryAddNativeLib path " + nativeLibraryDir);
+            ArrayList<String> arrayList = new ArrayList<>();
+            arrayList.add(nativeLibraryDir);
+            addNativePath.invoke(so_classloader, arrayList);
+            CLog.i("tryAddNativeLib path finish ");
+        } catch (Throwable e) {
+            CLog.e("tryAddNativeLib  error " + e, e);
+        }
+    }
 
-    public static boolean is64bit(String xpMoudleName, Context context) throws Exception {
+    private static boolean MergeClassloader(Context context, ClassLoader mainClassloader) {
+        DexClassLoader classLoader = null;
+        try {
+            File dexFile = new File(context.getApplicationInfo().dataDir + "/" + JNITRACE_DEX_NAME);
+            if(!dexFile.exists()){
+                CLog.e(">>>>>>>>>> MergeClassloader dex not exists "+dexFile.getPath());
+                return false;
+            }
+            CLog.i("MergeClassloader dex file path -> " + dexFile);
+            String cacheDir = context.getCacheDir().getAbsolutePath();
+            classLoader = new DexClassLoader(dexFile.getPath(), cacheDir, null, mainClassloader);
+        } catch (Throwable e) {
+            CLog.e("initMySoForName load class loader error " + e);
+        }
+        if (classLoader == null) {
+            CLog.e("initMySoForName DexClassLoader == null ");
+            return false;
+        }
+
+        //将两个classloader进行合并,方便native层进行查找 。
+        //将宿主的classloader里面填充我们注入native的method
+        Object[] MyDexClassloader = getClassLoaderElements(mainClassloader);
+        if (MyDexClassloader == null || MyDexClassloader.length == 0) {
+            CLog.e("get MyDexClassloader Elements == null");
+            return false;
+        }
+        Object[] otherClassloader = getClassLoaderElements(classLoader);
+        if (otherClassloader == null || otherClassloader.length == 0) {
+            CLog.e(">>>>>>>>>>>> get otherClassloader Elements == null");
+            return false;
+        }
+        try {
+            CLog.e("get classloader Elements success !");
+            Object[] combined =
+                    (Object[]) Array.newInstance(otherClassloader.getClass().getComponentType(),
+                            MyDexClassloader.length + otherClassloader.length);
+            //将自己classloader 数组的内容 放到 前面位置
+            System.arraycopy(MyDexClassloader, 0, combined, 0, MyDexClassloader.length);
+            System.arraycopy(otherClassloader, 0, combined, MyDexClassloader.length, otherClassloader.length);
+            CLog.i("System.arraycopy finish ");
+            if ((MyDexClassloader.length +
+                    otherClassloader.length) != combined.length) {
+                CLog.e("merge elements size error ");
+                return false;
+            }
+            if (SetDexElements(combined, MyDexClassloader.length + otherClassloader.length, mainClassloader)) {
+                CLog.i("merge classloader success !");
+                return true;
+            } else {
+                CLog.e("merge classloader fail ");
+            }
+        } catch (Throwable e) {
+            CLog.e("merge classloader error " + e, e);
+        }
+        CLog.i(">>>>>>>>>>>>>>>>> merge classloader finish ");
+        return false;
+    }
+
+
+    public static boolean is64bitSelf(String xpMoudleName, Context context) throws Exception {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             return Process.is64Bit();
         }
-        PackageManager pm = context.getPackageManager();
-        PackageInfo packageInfo = pm.getPackageInfo(xpMoudleName, 0);
-        String nativeLibraryDir = packageInfo.applicationInfo.nativeLibraryDir;
+        return is64bitForPackageName(context, xpMoudleName);
+    }
 
+    public static boolean is64bitForPackageName(Context context, String packageName) throws Exception {
+        PackageManager pm = context.getPackageManager();
+        PackageInfo packageInfo = pm.getPackageInfo(packageName, 0);
+        String nativeLibraryDir = packageInfo.applicationInfo.nativeLibraryDir;
+        boolean is64 = !nativeLibraryDir.startsWith(ARM);
+        CLog.i("is64bitForPackageName [" + packageName + "(" + is64 + ")] " + nativeLibraryDir);
         //如果对方App没有So的话,默认使用64
-        return !nativeLibraryDir.startsWith(ARM);
+        return is64;
     }
 
 
     /**
-     * 这块可能有问题,需要区分32和64位
-     * 1,需要提前解压
-     * 2,返回对的路径
+     * 获取So路径。
      */
-    public static String getSoPath(Context context, String name, String intoSoPath) throws Exception {
+    public static String getSoPath(Context context, String so_name, String into_so_path_baseApk) throws Exception {
         String ret = null;
-        PackageInfo packageInfo = null;
-        String publicSourceDir = null;
-        PackageManager pm = context.getPackageManager();
+        String baseApkPath = null;
         try {
-            packageInfo = pm.getPackageInfo(BuildConfig.APPLICATION_ID, 0);
+            PackageManager pm = context.getPackageManager();
+            PackageInfo packageInfo = pm.getPackageInfo(BuildConfig.APPLICATION_ID, 0);
+            if (packageInfo != null) {
+                //base apk的路径
+                baseApkPath = packageInfo.applicationInfo.publicSourceDir;
+            }
         } catch (Throwable e) {
             //很多加壳app会在getPackageInfo 失败,这个时候采用默认的config目录
             CLog.e("getSoPath getPackageInfo so path error ,start append path " + e.getMessage());
-            publicSourceDir = intoSoPath;
+            baseApkPath = into_so_path_baseApk;
         }
-        if (packageInfo != null) {
-            //base apk的路径
-            publicSourceDir = packageInfo.applicationInfo.publicSourceDir;
+        if (baseApkPath == null) {
+            CLog.e(">>>>>>>>>>>>  get so path base.apk == null !!!!!!!!!!!!!!");
+            return null;
         }
-        CLog.e("publicSourceDir path -> " + publicSourceDir);
+        CLog.e("baseApkPath base.apk path -> " + baseApkPath);
 
-        String destPath = context.getApplicationInfo().dataDir + "/" + lib;
+        String cacheDir = context.getApplicationInfo().dataDir + "/" + LibDIRName;
         //尝试解压
-        UnZipUtils.UnZipFolder(publicSourceDir, destPath);
+        UnZipUtils.UnZipFolder(baseApkPath, cacheDir);
         try {
-            ret = destPath + "/lib/" + (is64bit(BuildConfig.APPLICATION_ID, context) ? V8 : V7) + "/" + name;
+            ret = cacheDir + "/lib/" +
+                    (is64bitSelf(BuildConfig.APPLICATION_ID, context) ? V8 : V7) + "/" +
+                    so_name;
         } catch (Throwable exception) {
             CLog.e("getSoPath is64bit   error " + exception.getMessage());
         }
@@ -145,16 +379,19 @@ public class IntoMySoUtils {
     public static void LoadSoForPath(String path, Object object) {
         try {
             CLog.e("load so path ->  " + path);
+            String Msg = null;
             if (Build.VERSION.SDK_INT >= 28) {
-                String nativeLoad = (String) XposedHelpers.callMethod(Runtime.getRuntime(), "nativeLoad", path, object);
-                CLog.e(nativeLoad == null ? "" : nativeLoad);
+                Msg = (String) XposedHelpers.callMethod(Runtime.getRuntime(), "nativeLoad", path, object);
             } else {
-                String doLoad = (String) XposedHelpers.callMethod(Runtime.getRuntime(), "doLoad", path, object);
-                CLog.e(doLoad == null ? "" : doLoad);
+                Msg = (String) XposedHelpers.callMethod(Runtime.getRuntime(), "doLoad", path, object);
             }
-            CLog.i("load so for path success "+path);
+            if(Msg!=null){
+                CLog.e(">>>>>>>> into so for path error -> "+Msg+" "+path);
+            }else {
+                CLog.i("load so for path success " + path);
+            }
         } catch (Throwable e) {
-            CLog.e("load so for path " + e.getMessage());
+            CLog.e("load so for path error" + e.getMessage());
         }
     }
 }

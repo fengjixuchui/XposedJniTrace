@@ -3,6 +3,7 @@ package com.zhenxi.jnitrace.utils;
 
 
 import android.content.Context;
+import android.content.res.AssetManager;
 
 import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
@@ -12,6 +13,7 @@ import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
@@ -24,6 +26,27 @@ public class FileUtils {
 
     private static FileOutputStream outStream = null;
     private static OutputStreamWriter writer = null;
+
+    public static File extractAssetFile(Context context, String assetPath, String outputPath) throws IOException {
+        // 获取 AssetManager 对象
+        AssetManager assetManager = context.getAssets();
+        // 打开指定 asset 文件
+        InputStream inputStream = assetManager.open(assetPath);
+        // 构造输出文件对象
+        File outputFile = new File(outputPath, new File(assetPath).getName());
+        // 将 asset 文件解压到输出文件
+        OutputStream outputStream = new FileOutputStream(outputFile);
+        byte[] buffer = new byte[1024];
+        int length;
+        while ((length = inputStream.read(buffer)) > 0) {
+            outputStream.write(buffer, 0, length);
+        }
+        // 关闭输入输出流
+        inputStream.close();
+        outputStream.close();
+        // 返回解压后的文件
+        return outputFile;
+    }
     /**
      * 递归删除
      * 删除某个目录及目录下的所有子目录和文件

@@ -22,11 +22,15 @@ android {
         applicationId "com.zhenxi.FunJni"
         minSdkVersion 21
         targetSdkVersion 21 //support old xposed
-        versionCode 110
-        versionName "1.1"
+        versionCode 122
+        versionName "1.2.2"
         ndk {
             abiFilters 'armeabi-v7a'
             abiFilters 'arm64-v8a'
+        }
+        //v7&v8
+        packagingOptions {
+            pickFirst '**/lib*.so'
         }
         externalNativeBuild {
             cmake {
@@ -56,6 +60,12 @@ android {
     externalNativeBuild {
         cmake {
             path "src/main/cpp/CMakeLists.txt"
+        }
+    }
+    sourceSets{
+        main{
+            jniLibs.srcDirs = ['src/main/jniLibs']
+            jni.srcDirs = []
         }
     }
     buildTypes {
@@ -89,11 +99,7 @@ android {
         }
     }
 
-    sourceSets{
-        main{
-            jniLibs.srcDirs = ['src/main/jniLibs']
-        }
-    }
+
     signingConfigs {
         debug {
             storeFile file("jnitraceKey.jks")
@@ -115,7 +121,22 @@ android {
     //NDK R23 super C++20 min version
     ndkVersion '25.1.8937393'
 }
+task copyNdkLibs(type: Copy) {
+    from(new File(projectDir, 'src/main/jniLibs')) {
+        include '**/*.so'
+        exclude '**/*arm64*'
+    }
+    into new File(buildDir, 'intermediates/merged_ndk_libs/debug/out/lib')
+    eachFile { details ->
+        details.path = details.name
+    }
+}
 
+tasks.whenTaskAdded { task ->
+    if (task.name.contains('mergeDebugJniLibFolders')) {
+        task.dependsOn copyNdkLibs
+    }
+}
 dependencies {
     implementation 'androidx.appcompat:appcompat:1.1.0'
 

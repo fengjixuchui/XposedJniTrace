@@ -14,13 +14,17 @@ public class UnZipUtils {
 
 
     /**
-     * 解压zip到指定的路径
+     * 解压zip到指定的路径。
+     *
+     * zipFileString 需要解压的文件。
+     * outPathString 释放的目录
      */
-    public  static  void UnZipFolder(String zipFileString, String outPathString)  {
-        CLog.i("UnZipFolder  zipFileString -> "+zipFileString+"  outPathString -> "+outPathString);
-        File file1 = new File(outPathString);
+    public  static  void UnZipFolder(String zipFileString, String cachePath)  {
+        CLog.i("UnZipFolder  zipFileString -> "+zipFileString
+                +"  cachePath -> "+cachePath);
+        File file1 = new File(cachePath);
         if(file1.exists()){
-            CLog.i("UnZipFolder exists ,start FileUtils -> delete  "+outPathString+"  "+
+            CLog.i("UnZipFolder exists ,start FileUtils -> delete  "+cachePath+"  "+
                     FileUtils.delFiles(file1,false)
             );
         }
@@ -35,13 +39,13 @@ public class UnZipUtils {
                 if (zipEntry.isDirectory()) {
                     //获取部件的文件夹名
                     szName = szName.substring(0, szName.length() - 1);
-                    File folder = new File(outPathString + File.separator + szName);
+                    File folder = new File(cachePath + File.separator + szName);
                     FileUtils.makeSureDirExist(folder);
                 } else {
                     if(!szName.contains("lib")){
                         continue;
                     }
-                    File file = new File(outPathString + File.separator + szName);
+                    File file = new File(cachePath + File.separator + szName);
                     if (!file.exists()){
                         file.getParentFile().mkdirs();
                         file.createNewFile();

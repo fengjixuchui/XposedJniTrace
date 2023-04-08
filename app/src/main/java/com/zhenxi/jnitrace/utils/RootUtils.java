@@ -6,6 +6,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.lang.reflect.Array;
+import java.util.Arrays;
+
+import javax.security.auth.login.LoginException;
 
 /**
  * Created by Lyh on
@@ -81,43 +85,52 @@ public class RootUtils {
         }
         return true;
     }
+    public static boolean execShell(String[] cmd) {
+        CLog.i("execShell cmd -> " + Arrays.toString(cmd));
+        Process process = null;
+        DataOutputStream os = null;
+        try {
+            process = Runtime.getRuntime().exec("su"); //切换到root帐号
+            os = new DataOutputStream(process.getOutputStream());
+            for(String string:cmd) {
+                os.writeBytes(string + "\n");
+            }
+            os.writeBytes("exit\n");
+            os.flush();
+            int e = process.waitFor();
+            if (e != 0) {
+                //失败,打印具体信息
+                InputStreamReader inputStreamReader = new InputStreamReader(process.getErrorStream());
+                BufferedReader br = new BufferedReader(inputStreamReader);
+                String line;
+                StringBuilder errorMsg = new StringBuilder();
+                while ((line = br.readLine()) != null) {
+                    errorMsg.append(line).append("\n");
+                }
+                br.close();
+                inputStreamReader.close();
+                CLog.e("execShell error  "+ Arrays.toString(cmd));
+                CLog.e("errorMsg->  " + errorMsg);
+                return false;
+            }
+            return true;
+        } catch (Throwable e) {
+            CLog.e("execShell get root error  " + e.getMessage());
+        } finally {
+            try {
+                if (os != null) {
+                    os.close();
+                }
+                if (process != null) {
+                    process.destroy();
+                }
+            } catch (Exception ignored) {
 
-    public static void execShell(String cmd){
-        OutputStream outputStream=null;
-        DataOutputStream dataOutputStream=null;
-        try{
-
-            Runtime runtime = Runtime.getRuntime();
-            runtime.exec(cmd+"\n");
-            //权限设置
-            Process p = Runtime.getRuntime().exec("su");
-            //获取输出流
-            outputStream =  p.getOutputStream();
-            dataOutputStream =new DataOutputStream(outputStream);
-            //将命令写入
-            dataOutputStream.writeBytes(cmd+ "\n");
-            //提交命令
-            dataOutputStream.flush();
-
+            }
         }
-        catch(Throwable t){
-            CLog.e("execShell error "+t.getMessage());
-            t.printStackTrace();
-        }finally {
-           if(outputStream!=null){
-               try {
-                   outputStream.close();
-               } catch (IOException e) {
-                   e.printStackTrace();
-               }
-           }
-           if(dataOutputStream!=null){
-               try {
-                   dataOutputStream.close();
-               } catch (IOException e) {
-                   e.printStackTrace();
-               }
-           }
-        }
+        return false;
+    }
+    public static boolean execShell(String cmd) {
+        return execShell(new String[]{cmd});
     }
 }

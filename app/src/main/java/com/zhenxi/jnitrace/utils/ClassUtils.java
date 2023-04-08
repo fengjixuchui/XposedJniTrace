@@ -1,6 +1,7 @@
 package com.zhenxi.jnitrace.utils;
 
 import android.os.Build;
+import android.util.Log;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -33,27 +34,9 @@ public class ClassUtils {
     }
 
 
-    public static void getClassMethodInfo(Class c) {
-        if (c == null) {
-            return;
-        }
-        for (Method method : c.getDeclaredMethods()) {
-            CLog.e("方法名字 " + method.getName() + " 方法参数 " + Arrays.toString(method.getParameterTypes()));
-        }
-        CLog.e("----------------------------------------------------------------------------------------------");
 
-    }
 
-    public static void getClassFieldInfo(Class c) {
-        if (c == null) {
-            return;
-        }
-        for (Field method : c.getDeclaredFields()) {
-            CLog.e("字段类型 " + method.getName() + " 方法参数 " + method.getType().getName());
-        }
-        CLog.e("----------------------------------------------------------------------------------------------");
 
-    }
 
     private static Class<?> findInChoose(String classname, boolean isloader) {
         Class<?> invokeClass = null;
@@ -185,5 +168,40 @@ public class ClassUtils {
             e.printStackTrace();
         }
         return resut;
+    }
+
+    public static void getClassMethodInfo(Class<?> c) {
+        if(c==null){
+            CLog.e("getClassMethodInfo clazz == null ");
+            return;
+        }
+        for (Method method : c.getDeclaredMethods()) {
+            CLog.e("方法名字 " + method.getName() + " 方法参数 " + Arrays.toString(method.getParameterTypes()));
+        }
+        CLog.e("-------------------------------------------- "+c.getName());
+    }
+
+    /**
+     * 判断这个类是否存在这个方法
+     */
+    public static boolean getClassMethodIsExist(Class<?> c,String methodName) {
+        if(c==null){
+            return false;
+        }
+        for (Method method : c.getDeclaredMethods()) {
+            if(method.getName().equals(methodName)){
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static void getClassFieldInfo(Class<?> c) {
+        if(c==null){
+            return;
+        }
+        for (Field method : c.getDeclaredFields()) {
+            CLog.e("字段名字 " + method.getName() + " 字段类型 " + method.getType().getName());
+        }
     }
 }

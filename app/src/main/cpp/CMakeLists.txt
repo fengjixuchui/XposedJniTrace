@@ -1,4 +1,6 @@
 cmake_minimum_required(VERSION 3.4.1)
+set(CMAKE_ANDROID_ARCH_ABI armeabi-v7a arm64-v8a)
+
 project(XposedJniTrace)
 
 enable_language(C ASM)

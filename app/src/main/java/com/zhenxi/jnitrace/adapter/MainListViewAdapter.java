@@ -2,7 +2,9 @@ package com.zhenxi.jnitrace.adapter;
 
 import android.content.Context;
 import android.content.DialogInterface;
+import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -18,15 +20,20 @@ import com.zhenxi.jnitrace.BuildConfig;
 import com.zhenxi.jnitrace.R;
 import com.zhenxi.jnitrace.bean.AppBean;
 
+import com.zhenxi.jnitrace.config.ConfigKey;
 import com.zhenxi.jnitrace.utils.CLog;
 import com.zhenxi.jnitrace.utils.Constants;
 import com.zhenxi.jnitrace.utils.FileUtils;
 import com.zhenxi.jnitrace.utils.GsonUtils;
+import com.zhenxi.jnitrace.utils.IntoMySoUtils;
 import com.zhenxi.jnitrace.utils.RootUtils;
 import com.zhenxi.jnitrace.utils.SpUtil;
+import com.zhenxi.jnitrace.utils.SystemPath;
 import com.zhenxi.jnitrace.utils.ToastUtils;
 
 import java.io.File;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 
@@ -35,14 +42,19 @@ import static com.zhenxi.jnitrace.config.ConfigKey.CONFIG_JSON;
 import static com.zhenxi.jnitrace.config.ConfigKey.FILTER_LIST;
 import static com.zhenxi.jnitrace.config.ConfigKey.IS_LISTEN_TO_ALL;
 import static com.zhenxi.jnitrace.config.ConfigKey.IS_SERIALIZATION;
+import static com.zhenxi.jnitrace.config.ConfigKey.IS_SYSTEM_LOAD_INTO;
+import static com.zhenxi.jnitrace.config.ConfigKey.IS_USE_SYSTEM_PATH;
+import static com.zhenxi.jnitrace.config.ConfigKey.JNITRACE_DEX_NAME;
 import static com.zhenxi.jnitrace.config.ConfigKey.LIST_OF_FUNCTIONS;
-import static com.zhenxi.jnitrace.config.ConfigKey.MOUDLE_SO_PATH;
+import static com.zhenxi.jnitrace.config.ConfigKey.MODULE_SO_PATH;
 import static com.zhenxi.jnitrace.config.ConfigKey.PACKAGE_NAME;
 import static com.zhenxi.jnitrace.config.ConfigKey.SAVE_TIME;
+import static com.zhenxi.jnitrace.config.ConfigKey.SYSTEM_INTO_PATH;
 
 
 import androidx.appcompat.app.AlertDialog;
 
+import org.json.JSONException;
 import org.json.JSONObject;
 
 
@@ -57,16 +69,22 @@ public class MainListViewAdapter extends BaseAdapter {
     private final Context mContext;
     private final CheckBox isSerialization;
 
+    private final CheckBox isSystemLoad;
+
+    private final CheckBox isSystemPathLoad;
+
 
     private AppBean mAppBean = null;
 
     public MainListViewAdapter(Context context,
                                ArrayList<AppBean> data,
-                               CheckBox info) {
+                               CheckBox isSerialization,
+                               CheckBox isSystemLoad, CheckBox isSystemPathLoad) {
         this.mContext = context;
         this.data = data;
-        this.isSerialization = info;
-
+        this.isSerialization = isSerialization;
+        this.isSystemLoad = isSystemLoad;
+        this.isSystemPathLoad = isSystemPathLoad;
     }
 
 
@@ -125,6 +143,7 @@ public class MainListViewAdapter extends BaseAdapter {
     private void showDialogForList(Context context) {
         View view = LayoutInflater.from(mContext).inflate(R.layout.dialog_input, null);
         EditText input = view.findViewById(R.id.ed_input);
+        input.setVisibility(View.GONE);
         JSONObject jsonObject = new JSONObject();
         ArrayList<String> filtersList = new ArrayList<>();
         ArrayList<String> functionsList = new ArrayList<>();
@@ -132,22 +151,20 @@ public class MainListViewAdapter extends BaseAdapter {
                 .setView(view)
                 .setPositiveButton("确定", (dialog, which) -> {
                     String inputStr = input.getText().toString();
-                    if (inputStr.length() == 0) {
-                        ToastUtils.showToast(context, "输入错误,未找到需要需要监听的SO信息");
-                        return;
-                    }
                     try {
                         if (inputStr.equals("ALL")) {
                             jsonObject.put(IS_LISTEN_TO_ALL, true);
                         } else {
                             jsonObject.put(IS_LISTEN_TO_ALL, false);
-                            String[] split = inputStr.split("\\|");
-                            CLog.e("input str msg -> " + Arrays.toString(split));
-                            filtersList.addAll(Arrays.asList(split));
-                            if (!isSerialization.isChecked()) {
-                                String listJsonStr = GsonUtils.obj2str(filtersList);
-                                CLog.e("filter list json -> " + listJsonStr);
-                                jsonObject.put(FILTER_LIST, listJsonStr);
+                            if (input.length() >= 1) {
+                                String[] split = inputStr.split("\\|");
+                                CLog.e("input str msg -> " + Arrays.toString(split));
+                                filtersList.addAll(Arrays.asList(split));
+                                if (!isSerialization.isChecked() && filtersList.size() >= 1) {
+                                    String listJsonStr = GsonUtils.obj2str(filtersList);
+                                    CLog.e("filter list json -> " + listJsonStr);
+                                    jsonObject.put(FILTER_LIST, listJsonStr);
+                                }
                             }
                         }
                         String functionsStr = GsonUtils.obj2str(functionsList);
@@ -167,9 +184,15 @@ public class MainListViewAdapter extends BaseAdapter {
                 })
                 .setMultiChoiceItems(items, null, (dialog, which, isChecked) -> {
                     if (isChecked) {
-                        functionsList.add(which+"");
+                        functionsList.add(which + "");
+                        if (which == 0 || which == 1) {
+                            input.setVisibility(View.VISIBLE);
+                        }
                     } else {
-                        functionsList.remove(which+"");
+                        functionsList.remove(which + "");
+                        if (which == 0 || which == 1) {
+                            input.setVisibility(View.GONE);
+                        }
                     }
                     CLog.e("functions list " + functionsList);
                 })
@@ -196,13 +219,19 @@ public class MainListViewAdapter extends BaseAdapter {
         }
         try {
             jsonObject.put(PACKAGE_NAME, bean.packageName);
+            jsonObject.put(IS_SYSTEM_LOAD_INTO, isSystemLoad.isChecked());
+            boolean isSystemPath = isSystemPathLoad.isChecked();
+            jsonObject.put(IS_USE_SYSTEM_PATH, isSystemPath);
             try {
-                PackageInfo packageInfo =
-                        mContext.getPackageManager().getPackageInfo(BuildConfig.APPLICATION_ID, 0);
-                jsonObject.put(MOUDLE_SO_PATH, packageInfo.applicationInfo.publicSourceDir);
-            } catch (Throwable ignored) {
-                jsonObject.put(MOUDLE_SO_PATH, null);
+                //普通的根目录注入
+                PackageInfo packageInfo = mContext.getPackageManager().getPackageInfo(BuildConfig.APPLICATION_ID, 0);
+                //Base.apk路径
+                jsonObject.put(MODULE_SO_PATH, packageInfo.applicationInfo.publicSourceDir);
+            } catch (Throwable e) {
+                CLog.e("MOUDLE_SO_PATH error " + e, e);
+                jsonObject.put(MODULE_SO_PATH, null);
             }
+            //CLog.i("module into base.apk path  -> " + jsonObject.getString(MODULE_SO_PATH));
             //保存时间,增加时效性
             jsonObject.put(SAVE_TIME, System.currentTimeMillis());
             jsonObject.put(IS_SERIALIZATION, isSerialization.isChecked());
@@ -213,12 +242,32 @@ public class MainListViewAdapter extends BaseAdapter {
     }
 
     private void saveConfigForLocation(AppBean bean, JSONObject jsonObject) {
-        SpUtil.putString(mContext, CONFIG_JSON, jsonObject.toString());
         initConfig(bean.packageName, jsonObject);
         CLog.e("save config file info -> " + jsonObject);
+        SpUtil.putString(mContext, CONFIG_JSON, jsonObject.toString());
         ToastUtils.showToast(mContext,
                 "保存成功文件路径为\n" +
                         "data/data/" + bean.packageName);
+    }
+
+    private String getRootPath(String pathStr) {
+        int secondSlashIndex = pathStr.indexOf('/', pathStr.indexOf('/') + 1);
+        if (secondSlashIndex != -1) {
+            return pathStr.substring(0, secondSlashIndex);
+        }
+        return null;
+    }
+
+    private void setSystemInfoPath(String savepath, JSONObject jsonObject) {
+        try {
+
+            String path = savepath + "/lib" + BuildConfig.project_name + ".so";
+            RootUtils.execShell("chmod 777 " + path);
+            jsonObject.put(SYSTEM_INTO_PATH, path);
+            CLog.i(">>>>>>>>>>>>>>>> cp file success !! " + path);
+        } catch (Throwable e) {
+            CLog.e("setSystemInfoPath error " + e, e);
+        }
     }
 
     /**
@@ -229,38 +278,81 @@ public class MainListViewAdapter extends BaseAdapter {
     @SuppressWarnings("All")
     private void initConfig(String packageName, JSONObject jsonObject) {
         try {
-
-            File config = new File("/data/data/"
-                    + BuildConfig.APPLICATION_ID + "/" + BuildConfig.project_name + "Config");
-            config.setExecutable(true, false);
-            config.setReadable(true, false);
-            config.setWritable(true, false);
+            if (isSystemPathLoad.isChecked()) {
+                boolean is64 = IntoMySoUtils.is64bitForPackageName(mContext, packageName);
+                String into_so_path = IntoMySoUtils.getSoPath(mContext, "lib" + BuildConfig.project_name + ".so", null);
+                String intoSystemPath = null;
+                PackageManager pm = mContext.getPackageManager();
+                PackageInfo packageInfo = pm.getPackageInfo(packageName, 0);
+                if (packageInfo != null) {
+                    //base apk的路径
+                    intoSystemPath = packageInfo.applicationInfo.nativeLibraryDir;
+                }
+                //将so放到/cache 或者/data/local/tmp/但是发现没权限
+                if(intoSystemPath==null){
+                    intoSystemPath = ConfigKey.DEF_VALUE;
+                }else {
+                    CLog.i("system into path lib -> "+intoSystemPath);
+                    RootUtils.execShell("cp -f " + into_so_path + " " + intoSystemPath);
+                    setSystemInfoPath(intoSystemPath,jsonObject);
+                }
+            }
+            File jnitraceModleData
+                    = new File("/data/data/" + BuildConfig.APPLICATION_ID);
+            File config = new File(jnitraceModleData, BuildConfig.project_name + "Config");
             CLog.e("temp config file path " + config.getPath());
             if (config.exists()) {
                 boolean delete = config.delete();
                 if (!delete) {
-                    CLog.e("delete org config file error");
+                    CLog.e("delete org config file error ,start root delete " + config.getPath());
+                    RootUtils.execShell("rm -f " + config.getPath());
                 }
             }
+            FileUtils.makeSureDirExist(config.getParentFile());
+            boolean configNewFile = config.createNewFile();
+            if (!configNewFile) {
+                CLog.e(">>>>>>>>>>> create temp config file error " + config.getPath());
+                return;
+            }
+            config.setExecutable(true, false);
+            config.setReadable(true, false);
+            config.setWritable(true, false);
             CLog.e("start save config file " + config.getPath());
             FileUtils.saveString(config, jsonObject.toString());
 
             File temp = new File("/data/data/" + packageName);
-            File tagFile = new File(temp.getPath() + "/" + BuildConfig.project_name + "Config");
-            if(tagFile.exists()){
-                RootUtils.execShell("rm -f " + tagFile.getPath());
-                CLog.i(">>>>>>>> initConfig rm -f finish  "+tagFile.getPath());
+            File tagConfigFile = new File(temp, BuildConfig.project_name + "Config");
+            if (tagConfigFile.exists()) {
+                RootUtils.execShell("rm -f " + tagConfigFile.getPath());
+                CLog.i(">>>>>>>> initConfig rm -f finish  " + tagConfigFile.getPath());
             }
+            File tagDexFile = new File(temp, JNITRACE_DEX_NAME);
+            if (tagDexFile.exists()) {
+                RootUtils.execShell("rm -f " + tagDexFile.getPath());
+                CLog.i(">>>>>>>> initConfig rm -f finish  " + tagDexFile.getPath());
+            }
+
             CLog.i(">>>>>>>>> start mv " +
                     "file " + config.getPath() + "->" + temp);
             //强制覆盖
             RootUtils.execShell("mv -f " + config.getPath() + " " + temp);
+
+            //asset release
+            File dexFile =
+                    FileUtils.extractAssetFile(mContext, JNITRACE_DEX_NAME
+                            , jnitraceModleData.getPath());
+            if (!dexFile.exists()) {
+                CLog.i(">>>>>>>> JnitraceDex.dex  release error " + dexFile.getPath());
+                return;
+            }
+            RootUtils.execShell("mv -f " + dexFile.getPath() + " " + temp);
+
             //防止因为用户组权限问题导致open failed: EACCES (Permission denied)
-            CLog.i(">>>>>>>>>> chmod 777 path -> " + tagFile);
-            RootUtils.execShell("chmod 777  " + tagFile.getPath());
-            //尝试利用magisk本身的busybox命令,直接chmod有的手机会失败
-            RootUtils.execShell("busybox chmod 777  " + tagFile.getPath());
-            CLog.i(">>>>>>>> initConfig finish  ");
+            CLog.i(">>>>>>>>>> chmod 777 path -> " + tagConfigFile + " " + dexFile);
+            RootUtils.execShell("chmod 777 " + tagConfigFile.getPath());
+            RootUtils.execShell("chmod 777 " + tagDexFile.getPath());
+
+
         } catch (Throwable e) {
             CLog.e("initConfig error  " + e, e);
         }

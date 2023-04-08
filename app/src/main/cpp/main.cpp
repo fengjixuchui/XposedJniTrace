@@ -133,7 +133,8 @@ void startHookJni(JNIEnv *env,
 }
 
 static JNINativeMethod gMethods[] = {
-        {"startHookJni", "(ZLjava/util/ArrayList;Ljava/util/ArrayList;Ljava/lang/String;)V",
+        {"startHookJni",
+         "(ZLjava/util/ArrayList;Ljava/util/ArrayList;Ljava/lang/String;)V",
          (void *) startHookJni},
 };
 
@@ -144,9 +145,10 @@ JNI_OnLoad(JavaVM *vm, [[maybe_unused]] void *reserved) {
     JNIEnv *env = nullptr;
     if (vm->GetEnv((void **) &env, JNI_VERSION_1_6) == JNI_OK) {
         mEnv = env;
-        auto MainClass = (jclass) env->FindClass("com/zhenxi/jnitrace/LHook");
+        auto MainClass = (jclass) env->FindClass("com/zhenxi/jnitrace/NativeEngine");
         if (env->RegisterNatives(MainClass, gMethods,
                                  sizeof(gMethods) / sizeof(gMethods[0])) < 0) {
+            LOG(ERROR) << ">>>>>>>>>>>> FunJni JNI_OnLoad RegisterNatives error";
             return JNI_ERR;
         }
         LOG(ERROR) << ">>>>>>>>>>>> FunJni JNI_OnLoad load success";
