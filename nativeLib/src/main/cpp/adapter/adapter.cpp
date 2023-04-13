@@ -17,7 +17,12 @@ int get_sdk_level() {
     }
     char sdk[PROP_VALUE_MAX] = {0};
     __system_property_get("ro.build.version.sdk", sdk);
-    SDK_INT = atoi(sdk);
+    char* endptr;
+    SDK_INT = (int)strtol(sdk, &endptr, 10);
+    if (*endptr != '\0') {
+        // 转换失败，处理错误
+        return -1;
+    }
     return SDK_INT;
 }
 

@@ -35,35 +35,17 @@ namespace SandHook {
 
         ElfImg(std::string_view elf);
 
-//        template<typename T = void*>
-//        requires(std::is_pointer_v<T>)
-//        constexpr const T getSymbAddress(std::string_view name) const {
-//            auto offset = getSymbOffset(name, GnuHash(name), ElfHash(name));
-//            if (offset > 0 && base != nullptr) {
-//                return reinterpret_cast<T>(static_cast<ElfW(Addr)>((uintptr_t) base + offset - bias));
-//            } else {
-//                return nullptr;
-//            }
-//        }
         template<typename T = void*>
-        constexpr typename std::enable_if<std::is_pointer<T>::value, const T>::type getSymbAddress(std::string_view name) const {
+        requires(std::is_pointer_v<T>)
+        constexpr const T getSymbAddress(std::string_view name) const {
             auto offset = getSymbOffset(name, GnuHash(name), ElfHash(name));
             if (offset > 0 && base != nullptr) {
-                return reinterpret_cast<const T>(static_cast<ElfW(Addr)>((uintptr_t) base + offset - bias));
+                return reinterpret_cast<T>(static_cast<ElfW(Addr)>((uintptr_t) base + offset - bias));
             } else {
                 return nullptr;
             }
         }
 
-        template<typename T = void*,
-                typename std::enable_if<std::is_pointer<T>::value, int>::type = 0>
-        constexpr const T getSymbPrefixFirstOffset(std::string_view prefix) const {
-            const auto offset = PrefixLookupFirst(prefix);
-            constexpr auto nullPtr = static_cast<T>(nullptr);
-            return (offset > 0 && base != nullptr)
-                   ? reinterpret_cast<const T>(static_cast<ElfW(Addr)>((uintptr_t) base + offset - bias))
-                   : nullPtr;
-        }
         template<typename T = void*>
         requires(std::is_pointer_v<T>)
         constexpr const T getSymbPrefixFirstOffset(std::string_view prefix) const {
@@ -141,8 +123,7 @@ namespace SandHook {
 
     constexpr uint32_t ElfImg::ElfHash(std::string_view name) {
         uint32_t h = 0, g;
-        for (std::size_t i = 0; i < name.size(); ++i) {
-            unsigned char p = name[i];
+        for (unsigned char p: name) {
             h = (h << 4) + p;
             g = h & 0xf0000000;
             h ^= g;

@@ -11,7 +11,9 @@
         <option name="modules">
           <set>
             <option value="$PROJECT_DIR$" />
-            <option value="$PROJECT_DIR$/app" />
+            <option value="$PROJECT_DIR$/JniTrace" />
+            <option value="$PROJECT_DIR$/baseLib" />
+            <option value="$PROJECT_DIR$/il2cppTrace" />
             <option value="$PROJECT_DIR$/nativeLib" />
           </set>
         </option>

@@ -4,7 +4,6 @@
 
 
 #include "logging.h"
-#include "dlfcn_compat.h"
 
 
 
@@ -18,6 +17,7 @@
 
 class HookUtils {
 public:
+    static bool HookerForSign(void *dysym, void *newrep, void **org);
 
     static bool Hooker(void *dysym, void *repl, void **org);
 

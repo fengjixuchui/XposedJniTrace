@@ -2,6 +2,7 @@
 // Created by zhenxi on 2021/5/16.
 //
 
+#include <list>
 
 #include "HookUtils.h"
 /**
@@ -15,7 +16,11 @@
  */
 #include <inline_hook.h>
 
+#include "xdl.h"
+#include "logging.h"
+#include "ZhenxiLog.h"
 
+using namespace std;
 
 /**
  * 保存全部hook的地址,防止某一个方法被多次Hook
@@ -32,6 +37,31 @@ bool HookUtils::unHook(void *sym) {
         hookedList->remove(sym);
     }
     return ret;
+}
+
+#define PUT_PTR(dys) \
+    if(hookedList!= nullptr){ \
+        hookedList->push_back(dys); \
+    } \
+
+
+
+bool HookUtils::HookerForSign(void *dysym, void *newrep, void **org){
+    if (dysym == nullptr) {
+        LOG(ERROR) << "dobby hook org == null ";
+        return false;
+    }
+    if (hookedList == nullptr) {
+        hookedList = new list<void *>();
+    }
+    //如果这个地址已经被Hook了 。也有可能返回失败 。dobby 会提示 already been hooked 。
+    for (void *ptr: *hookedList) {
+        if (ptr == dysym) {
+            //如果保存了这个地址,说明之前hook成功过,我们也认为hook成功
+            return true;
+        }
+    }
+    return  SandHook::Inline::InlineHookImpl(dysym, newrep, org);
 }
 /**
  * Hook的整体封装,这个方法可以切换别的Hook框架
@@ -73,7 +103,7 @@ bool HookUtils::Hooker(void *dysym, void *newrep, void **org) {
     LOG(ERROR) << "zhenxi runtime inlinehook start sandhook InlineHookImpl  ";
     ret = SandHook::Inline::InlineHookImpl(dysym, newrep, org);
     if (ret) {
-        hookedList->push_back(dysym);
+        PUT_PTR(dysym)
         return true;
     }
 
@@ -91,13 +121,13 @@ bool HookUtils::Hooker(void *dysym, void *newrep, void **org) {
         LOG(ERROR) << "!!!!!!!!!!!!!!!  HookUtils hook error   ";
         return false;
     }
-    hookedList->push_back(dysym);
+    PUT_PTR(dysym)
     return ret;
 
 }
 
 bool HookUtils::Hooker(void *handler, const char *dysym, void *repl, void **org) {
-    void *sym = dlsym_compat(handler, dysym);
+    void *sym = getSymCompatForHandler(handler, dysym);
     if (sym == nullptr) {
         LOG(ERROR) << "HookUtils hook sym == null    " << dysym;
         return false;
@@ -154,7 +184,6 @@ void hook_libc_function(void *handle, const char *symbol, void *new_func, void *
         return;
     }
     if (!HookUtils::Hooker(addr, new_func, old_func)) {
-        LOGE(">>>>>>>>>>> hook libc %s fail !", symbol)
+        LOGE(">>>>>>>>>>> io  hook %s fail !", symbol)
     }
-    LOGI(">>>>>>>>>>> hook libc  hook %s success !",symbol)
 }

@@ -1,0 +1,68 @@
+apply plugin: 'com.android.library'
+//apply plugin: 'com.kezong.fat-aar'
+
+
+static def getLibraryName() {
+    return "com.zhenxi.api"
+}
+
+// 供外部使用的编程API接口
+android {
+    compileSdkVersion rootProject.ext.compileSdkVersion
+    defaultConfig {
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        consumerProguardFiles 'consumer-rules.pro'
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    compileOptions {
+        sourceCompatibility = 1.8
+        targetCompatibility = 1.8
+    }
+
+//    packagingOptions{
+//        doNotStrip "*/armeabi/*.so"
+//        doNotStrip "*/armeabi-v7a/*.so"
+//        doNotStrip "*/x86/*.so"
+//    }
+
+
+    android.libraryVariants.all { variant ->
+        variant.outputs.all {
+            outputFileName = getLibraryName() + "_${defaultConfig.versionName}" + '.aar'
+        }
+    }
+
+    lintOptions {
+        abortOnError false
+    }
+
+}
+
+
+dependencies {
+    implementation fileTree(dir: 'libs', include: ['*.jar'])
+    implementation 'androidx.appcompat:appcompat:1.1.0'
+    implementation 'androidx.recyclerview:recyclerview:1.2.1'
+
+}
+
+task makeAAR(type: Copy) {
+    delete 'build/libs/zhenxi-api.aar'
+    // Android新版本的打包工具默认是将jar包放到packaged-classes目录下
+    // from('build/intermediates/bundles/release/')
+    from('build/intermediates/packaged-classes/release/')
+    into('build/libs/')
+    include('classes.jar')
+    rename('classes.jar', 'zhenxi-api.aar')
+}
+makeAAR.dependsOn(build)
+

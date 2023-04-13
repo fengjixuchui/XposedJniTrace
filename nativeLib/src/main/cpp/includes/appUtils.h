@@ -63,6 +63,8 @@ bool isSystemFile(const string& path);
  */
 void getAllOpenFdInfo();
 
+string get_process_name_by_pid(int pid);
+
 /**
  * 打印当前So在Maps里面的开始地址
  * @param name so的name

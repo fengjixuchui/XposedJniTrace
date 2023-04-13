@@ -4,21 +4,18 @@
 
 #include "../includes/libpath.h"
 #include "../includes/version.h"
+#include "../includes/adapter.h"
 
-
-#ifdef __cplusplus
-extern "C" {
-#endif
 
 char *getlibArtPath() {
     char *art = nullptr;
 #if defined(__aarch64__)
     if (get_sdk_level() >= ANDROID_R) {
-        art = (char*)"/apex/com.android.art/lib64/libart.so";
+        art = (char *) "/apex/com.android.art/lib64/libart.so";
     } else if (get_sdk_level() >= ANDROID_Q) {
-        art = (char*)"/apex/com.android.runtime/lib64/libart.so";
+        art = (char *) "/apex/com.android.runtime/lib64/libart.so";
     } else {
-        art = (char*)"/system/lib64/libart.so";
+        art = (char *) "/system/lib64/libart.so";
     }
 #else
     if (get_sdk_level() >= ANDROID_R) {
@@ -39,12 +36,12 @@ char *getLinkerPath() {
     //get_sdk_level 是dlfc自己实现的方法
     //android_get_device_api_level是系统方法,低版本的NDK没有此方法。
 #if defined(__aarch64__)
-    if (get_sdk_level() >= ANDROID_R) {
-        linker = (char*)"/apex/com.android.runtime/bin/linker64";
+    if (get_sdk_level()>= ANDROID_R) {
+        linker = (char *) "/apex/com.android.runtime/bin/linker64";
     } else if (get_sdk_level() >= ANDROID_Q) {
-        linker = (char*)"/apex/com.android.runtime/bin/linker64";
+        linker = (char *) "/apex/com.android.runtime/bin/linker64";
     } else {
-        linker = (char*)"/system/bin/linker64";
+        linker = (char *) "/system/bin/linker64";
     }
 #else
     if (get_sdk_level() >= ANDROID_R) {
@@ -58,11 +55,12 @@ char *getLinkerPath() {
 
     return linker;
 }
+
 //这里面包含了一些 对string操作的方法
 char *getlibcPlusPath() {
     char *libc;
 #if defined(__aarch64__)
-    libc = (char*)"/system/lib64/libstdc++.so";
+    libc = (char *) "/system/lib64/libstdc++.so";
 #else
     libc = (char*)"/system/lib/libstdc++.so";
 
@@ -75,11 +73,11 @@ char *getlibcPath() {
 
 #if defined(__aarch64__)
     if (get_sdk_level() >= ANDROID_R) {
-        libc = (char*)"/apex/com.android.runtime/lib64/bionic/libc.so";
+        libc = (char *) "/apex/com.android.runtime/lib64/bionic/libc.so";
     } else if (get_sdk_level() >= ANDROID_Q) {
-        libc =(char*) "/apex/com.android.runtime/lib64/bionic/libc.so";
+        libc = (char *) "/apex/com.android.runtime/lib64/bionic/libc.so";
     } else {
-        libc = (char*)"/system/lib64/libc.so";
+        libc = (char *) "/system/lib64/libc.so";
     }
 #else
     if (get_sdk_level() >= ANDROID_R) {
@@ -97,23 +95,23 @@ char *getMediaPath() {
     char *libc;
 
 #if defined(__aarch64__)
-     libc = (char*)"/system/lib64/libmediandk.so";
+    libc = (char *) "/system/lib64/libmediandk.so";
 #else
     libc = (char*)"/system/lib/libmediandk.so";
 #endif
     return libc;
 }
 
-char *getJitPath(){
+char *getJitPath() {
     char *libc;
 
 #if defined(__aarch64__)
     if (get_sdk_level() >= ANDROID_R) {
-        libc = (char*)"/apex/com.android.art/lib64/libart-compiler.so";
+        libc = (char *) "/apex/com.android.art/lib64/libart-compiler.so";
     } else if (get_sdk_level() >= ANDROID_Q) {
-        libc =(char*) "/apex/com.android.runtime/lib64/libart-compiler.so";
+        libc = (char *) "/apex/com.android.runtime/lib64/libart-compiler.so";
     } else {
-        libc = (char*)"/system/lib64/libart-compiler.so";
+        libc = (char *) "/system/lib64/libart-compiler.so";
     }
 #else
     if (get_sdk_level() >= ANDROID_R) {
@@ -128,7 +126,3 @@ char *getJitPath(){
 }
 
 
-
-#ifdef __cplusplus
-}
-#endif

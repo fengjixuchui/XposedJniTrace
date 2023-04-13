@@ -13,6 +13,8 @@ include_directories(
         ./
         ${HomePath}/nativeLib/src/main/cpp/
         ${HomePath}/nativeLib/src/main/cpp/includes/
+        ${HomePath}/Dobby/include/
+        ${HomePath}/container-runtime/src/main/cpp/include/
 )
 
 
@@ -37,7 +39,7 @@ add_library(
 target_link_libraries(
         utils
 
-        dlfc
+        xdl
         libpath
         runtimehook
         ${log-lib}

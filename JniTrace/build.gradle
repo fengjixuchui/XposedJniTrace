@@ -1,0 +1,160 @@
+apply plugin: 'com.android.application'
+apply plugin: 'stringfog'
+
+import com.github.megatronking.stringfog.plugin.kg.RandomKeyGenerator
+
+//import com.github.megatronking.stringfog.plugin.kg.HardCodeKeyGenerator
+
+stringfog {
+    enable false
+    //enable true
+    implementation 'com.github.megatronking.stringfog.xor.StringFogImpl'
+    fogPackages = ['com.zhenxi']
+    kg new RandomKeyGenerator()
+    //kg new HardCodeKeyGenerator("Zhenxi233")
+    mode bytes
+}
+
+def project_name = "FunJni"
+
+android {
+    compileSdkVersion rootProject.ext.compileSdkVersion
+    //NDK R23 super C++20 min version
+    ndkVersion rootProject.ext.ndkVersion
+
+    defaultConfig {
+        applicationId "com.zhenxi.il2cpptrace"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion //support old xposed
+        versionCode 122
+        versionName "1.2.2"
+        ndk {
+            abiFilters 'armeabi-v7a'
+            abiFilters 'arm64-v8a'
+        }
+        //v7&v8
+        packagingOptions {
+            pickFirst '**/lib*.so'
+        }
+        externalNativeBuild {
+            cmake {
+                arguments "-DPROJECT_SO_NAME=" + String.valueOf(project_name)
+            }
+        }
+        applicationVariants.all {
+            variant ->
+                variant.outputs.all {
+                    if (buildType.name == 'release') {
+                        def createTime = new Date().format("YYYY-MM-dd", TimeZone.getTimeZone("GMT+08:00"))
+                        outputFileName project_name + "_" + "v" + defaultConfig.versionName + "_" + createTime + "_" + buildType.name + ".apk"
+                    }
+                }
+
+        }
+    }
+    //In order to compile Java 9+ source, please set compileSdkVersion to 30 or above
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+    afterEvaluate {
+        // release task clean
+        assembleRelease.dependsOn(clean)
+    }
+    externalNativeBuild {
+        cmake {
+            path "src/main/cpp/CMakeLists.txt"
+        }
+    }
+    sourceSets {
+        main {
+            jniLibs.srcDirs = ['src/main/jniLibs']
+            jni.srcDirs = []
+        }
+    }
+    buildTypes {
+        debug {
+            minifyEnabled false
+            shrinkResources false
+            zipAlignEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            buildConfigField "boolean", "is_printf_log", "true"
+            buildConfigField "String", "project_name", "\"${project_name}\""
+            externalNativeBuild {
+                cmake {
+                    arguments "-DZHENXI_BUILD_TYPE=DEBUG"
+                    //arguments  "-DPROJECT_SO_NAME="+"\"${project_name}\""
+                }
+            }
+        }
+        release {
+            buildConfigField "boolean", "is_printf_log", "true"
+            buildConfigField "String", "project_name", "\"${project_name}\""
+            shrinkResources false
+            minifyEnabled false
+            zipAlignEnabled false
+            proguardFiles 'proguard-rules.pro'
+            externalNativeBuild {
+                cmake {
+                    arguments "-DZHENXI_BUILD_TYPE=RELEASE"
+                    //arguments  "-DPROJECT_SO_NAME="+"\"${project_name}\""
+                }
+            }
+        }
+    }
+
+
+    signingConfigs {
+        debug {
+            storeFile file("jnitraceKey.jks")
+            storePassword 'jnitrace'
+            keyAlias 'jnitrace'
+            keyPassword 'jnitrace'
+        }
+        release {
+            storeFile file("jnitraceKey.jks")
+            storePassword 'jnitrace'
+            keyAlias 'jnitrace'
+            keyPassword 'jnitrace'
+        }
+    }
+//    lintOptions {
+//        checkReleaseBuilds false
+//        abortOnError false
+//    }
+
+}
+task copyNdkLibs(type: Copy) {
+    from(new File(projectDir, 'src/main/jniLibs')) {
+        include '**/*.so'
+        exclude '**/*arm64*'
+    }
+    into new File(buildDir, 'intermediates/merged_ndk_libs/debug/out/lib')
+    eachFile { details ->
+        details.path = details.name
+    }
+}
+
+tasks.whenTaskAdded { task ->
+    if (task.name.contains('mergeDebugJniLibFolders')) {
+        task.dependsOn copyNdkLibs
+    }
+}
+dependencies {
+
+    implementation 'androidx.recyclerview:recyclerview:1.2.1'
+    implementation 'com.github.megatronking.stringfog:xor:4.0.1'
+    implementation 'com.google.android.material:material:1.1.0'
+
+    api project(path: ':baseLib')
+
+    //为了兼容老版本Xposed
+    //Gradle4.6开始provided关键字被弃用。
+    //Gradle5.0中provided关键字已经被删除。我们的项目不需要Java层进行hook
+    //只用到了xposed的注入功能,所以导入hook api的意义不是很大。
+    //provided 'de.robv.android.xposed:api:82'
+    compileOnly 'de.robv.android.xposed:api:82'
+
+    //https://github.com/LSPosed/AndroidHiddenApiBypass
+    implementation 'org.lsposed.hiddenapibypass:hiddenapibypass:4.3'
+}

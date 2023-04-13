@@ -6,29 +6,18 @@
 #define QCONTAINER_PRO_LIBPATH_H
 
 
+char *getlibArtPath();
 
-#include "dlfcn_compat.h"
+char *getLinkerPath();
 
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-char *getlibArtPath() ;
-
-char *getLinkerPath() ;
 //这里面包含了一些 对string操作的方法
- char *getlibcPlusPath() ;
+char *getlibcPlusPath();
 
- char *getlibcPath() ;
+char *getlibcPath();
 
-char *getMediaPath() ;
+char *getMediaPath();
 
 char *getJitPath();
-
-#ifdef __cplusplus
-}
-#endif
 
 
 #endif //QCONTAINER_PRO_LIBPATH_H

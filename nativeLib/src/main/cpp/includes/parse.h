@@ -40,7 +40,10 @@ public:
     static string jstring2str(JNIEnv *env, jstring jstr);
 
     static std::map<std::string, std::string> jmap2cmap(JNIEnv *env,jobject jmap);
-
+    /**
+     * Java list转换成C list
+     */
+    static std::list<string> jlist2clist(JNIEnv *env,jobject jlist);
 
     static string get_process_name();
 

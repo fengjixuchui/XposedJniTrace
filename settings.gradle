@@ -20,6 +20,9 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "XposeJniTrace"
-include ':app'
+rootProject.name = "XposedHookNative"
+include ':JniTrace'
+include ':il2cppTrace'
+
 include ':nativeLib'
+include ':baseLib'

@@ -64,22 +64,7 @@ string parse::get_process_name_pid(pid_t pid) {
 }
 
 string parse::jstring2str(JNIEnv *env, jstring jstr) {
-    char *rtn = nullptr;
-    jclass clsstring = env->FindClass("java/lang/String");
-    jstring strencode = env->NewStringUTF("UTF-8");
-    jmethodID mid = env->GetMethodID(clsstring, "getBytes", "(Ljava/lang/String;)[B");
-    auto barr = (jbyteArray) env->CallObjectMethod(jstr, mid, strencode);
-    jsize alen = env->GetArrayLength(barr);
-    jbyte *ba = env->GetByteArrayElements(barr, JNI_FALSE);
-    if (alen > 0) {
-        rtn = (char *) malloc(alen + 1);
-        memcpy(rtn, ba, alen);
-        rtn[alen] = 0;
-    }
-    env->ReleaseByteArrayElements(barr, ba, 0);
-    std::string stemp(rtn);
-    free(rtn);
-    return stemp;
+    return {env->GetStringUTFChars(jstr, nullptr)};
 }
 
 map<string, string> parse::jmap2cmap(JNIEnv *env, jobject jmap) {
@@ -111,7 +96,19 @@ map<string, string> parse::jmap2cmap(JNIEnv *env, jobject jmap) {
 }
 
 
-
+std::list<string> parse::jlist2clist(JNIEnv *env, jobject jlist) {
+    std::list<std::string> clist;
+    jclass listClazz = env->FindClass("java/util/ArrayList");
+    jmethodID sizeMid = env->GetMethodID(listClazz, "size", "()I");
+    jint size = env->CallIntMethod(jlist, sizeMid);
+    jmethodID list_get = env->GetMethodID(listClazz, "get", "(I)Ljava/lang/Object;");
+    for (int i = 0; i < size; i++) {
+        jobject item = env->CallObjectMethod(jlist, list_get, i);
+        //末尾添加
+        clist.push_back(parse::jstring2str(env, (jstring) item));
+    }
+    return clist;
+}
 
 
 [[maybe_unused]] bool parse::jboolean2bool(jboolean value) {
